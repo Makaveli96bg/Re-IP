@@ -1,0 +1,463 @@
+Parameters:
+  ASAvSSH:
+    Type: AWS::EC2::KeyPair::KeyName
+  BastionRole:
+    Type: String
+    Default: "SSM-default-role"
+    Description: Instance Role NAME to Attache
+
+Resources:
+  NetworkVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/22
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: NetworkIngressVPC
+
+  # Creating IGW & attaching IGW
+  # ----------------------------
+
+  MainIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: NetworkVPCmainIGW
+
+  AttachingMainIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref NetworkVPC
+      InternetGatewayId: !Ref MainIGW
+
+  # Main subnets for ASAv Instances
+  # -------------------------------
+
+  SubnetAMgmt:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/28
+      AvailabilityZone: eu-west-2a
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: SubnetAMgmt
+
+  SubnetAInside:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.16/28
+      AvailabilityZone: eu-west-2a
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: SubnetAInside
+
+  SubnetAOutside:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.32/28
+      AvailabilityZone: eu-west-2a
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: SubnetAOutside
+
+  SubnetCMgmt:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.2.0/28
+      AvailabilityZone: eu-west-2c
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: SubnetCMgmt
+
+  SubnetCInside:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.2.16/28
+      AvailabilityZone: eu-west-2c
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: SubnetCMgmt
+
+  SubnetCOutside:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.2.32/28
+      AvailabilityZone: eu-west-2c
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: SubnetCMgmt
+
+  # Transit Gateway Subnets
+  # For TG attachment in this VPC
+  # -----------------------------
+
+  TGConnectionSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.3.0/28
+      AvailabilityZone: eu-west-2a
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: TG_Connection_Subnet_A
+
+  TGConnectionSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.3.16/28
+      AvailabilityZone: eu-west-2b
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: TG_Connection_Subnet_B
+
+  TGConnectionSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.3.32/28
+      AvailabilityZone: eu-west-2c
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: TG_Connection_Subnet_C
+
+  # Support Route Table
+  # ----------------
+
+  MainRT:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: MainRT
+
+  # Route to internet
+  # -----------------
+
+  IGWRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MainRT
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MainIGW
+
+  # Attaching Main route table to subnets
+  # --------------------------------
+
+  MainRouteTableAssocSubAMgmt:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref SubnetAMgmt
+
+  MainRouteTableAssocSubAInside:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref SubnetAInside
+
+  MainRouteTableAssocSubAOutside:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref SubnetAOutside
+
+  MainRouteTableAssocSubCMgmt:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref SubnetCMgmt
+
+  MainRouteTableAssocSubCInside:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref SubnetCInside
+
+  MainRouteTableAssocSubCOutside:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref SubnetCOutside
+
+
+  # Transit Gateway
+  # ---------------
+
+  IngressTransitGateway:
+    Type: AWS::EC2::TransitGateway
+
+  # Transit Gateway Attachments to NetworkVPC
+  # ---------------
+
+  IngressTransitGatewayAttachments:
+    Type: AWS::EC2::TransitGatewayAttachment
+    Properties:
+      Options:
+        ApplianceModeSupport: enable
+        DnsSupport: enable
+      TransitGatewayId: !Ref IngressTransitGateway
+      VpcId: !Ref NetworkVPC
+      SubnetIds:
+        - !Ref TGConnectionSubnetA
+        - !Ref TGConnectionSubnetB
+        - !Ref TGConnectionSubnetC
+
+  # Main Security Groups for ASAv Instances Outside and Mgmt interfaces
+  # -------------------------------------------------------------------
+
+  ASAvMgmt:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: ASAv-Mgmt-SG
+      GroupDescription: Allow ssh to ASAv from 0.0.0.0/0
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  ASAvOutside:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: ASAv-Outside-SG
+      GroupDescription: Allow traffic from outside (0.0.0.0/0)
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: udp
+          FromPort: 500
+          ToPort: 500
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 4500
+          ToPort: 4500
+          CidrIp: 0.0.0.0/0
+
+  # Network Interfaces for ASAvOne
+  # ------------------------------
+
+  ASAvOneOutsideENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: Elastic Network Interface (Outside) for ASAvOne
+      PrivateIpAddress: 10.0.1.42
+      SubnetId: !Ref SubnetAOutside
+      SourceDestCheck: false
+      GroupSet:
+        - !Ref ASAvOutside
+      Tags:
+        - Key: Name
+          Value: ASAvOneOutsideENI
+
+  ASAvOneInsideENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: Elastic Network Interface (Outside) for ASAvOne
+      PrivateIpAddress: 10.0.1.26
+      SourceDestCheck: false
+      SubnetId: !Ref SubnetAInside
+      Tags:
+        - Key: Name
+          Value: ASAvOneInsideENI
+
+  ASAvOneMgmtENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: Elastic Network Interface (Outside) for ASAvOne
+      PrivateIpAddress: 10.0.1.10
+      SourceDestCheck: false
+      SubnetId: !Ref SubnetAMgmt
+      GroupSet:
+        - !Ref ASAvMgmt
+      Tags:
+        - Key: Name
+          Value: ASAvOneMgmtENI
+
+  # Lunching ASAv One using version 9.19.1
+  # --------------------------------------
+
+  ASAvOne:
+    Type: AWS::EC2::Instance
+    Properties:
+      AvailabilityZone: eu-west-2a
+      InstanceType: c5a.large
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref ASAvOneOutsideENI
+          DeviceIndex: '2'
+        - NetworkInterfaceId: !Ref ASAvOneInsideENI
+          DeviceIndex: '1'
+        - NetworkInterfaceId: !Ref ASAvOneMgmtENI
+          DeviceIndex: '0'
+      Monitoring: true
+      ImageId: ami-09058546cb87848a0
+      KeyName: !Ref ASAvSSH
+      Tags:
+        - Key: Name
+          Value: ASAvOne
+    DependsOn:
+      - ASAvOneOutsideENI
+      - ASAvOneInsideENI
+      - ASAvOneMgmtENI
+
+  # Network Interfaces for ASAvTwo
+  # ------------------------------
+
+  ASAvTwoOutsideENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: Elastic Network Interface (Outside) for ASAvOne
+      PrivateIpAddress: 10.0.2.42
+      SourceDestCheck: false
+      SubnetId: !Ref SubnetCOutside
+      GroupSet:
+        - !Ref ASAvOutside
+      Tags:
+        - Key: Name
+          Value: ASAvTwoOutsideENI
+
+  ASAvTwoInsideENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: Elastic Network Interface (Inside) for ASAvOne
+      PrivateIpAddress: 10.0.2.26
+      SourceDestCheck: false
+      SubnetId: !Ref SubnetCInside
+      Tags:
+        - Key: Name
+          Value: ASAvTwoInsideENI
+
+  ASAvTwoMgmtENI:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      Description: Elastic Network Interface (Mgmt) for ASAvOne
+      PrivateIpAddress: 10.0.2.10
+      SourceDestCheck: false
+      SubnetId: !Ref SubnetCMgmt
+      GroupSet:
+        - !Ref ASAvMgmt
+      Tags:
+        - Key: Name
+          Value: ASAvTwoMgmtENI
+
+  # Lunching ASAv Two using version 9.19.1
+  # --------------------------------------
+
+  ASAvTwo:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: c5a.large
+      AvailabilityZone: eu-west-2c
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref ASAvTwoOutsideENI
+          DeviceIndex: '2'
+        - NetworkInterfaceId: !Ref ASAvTwoInsideENI
+          DeviceIndex: '1'
+        - NetworkInterfaceId: !Ref ASAvTwoMgmtENI
+          DeviceIndex: '0'
+      Monitoring: true
+      ImageId: ami-09058546cb87848a0
+      KeyName: !Ref ASAvSSH
+      Tags:
+        - Key: Name
+          Value: ASAvTwo
+    DependsOn:
+      - ASAvTwoOutsideENI
+      - ASAvTwoInsideENI
+      - ASAvTwoMgmtENI
+
+  # Creating EIP for incoming traffic
+  # ---------------------------------
+
+  BaseEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+       - Key: Name
+         Value: ASAvExternalIp
+
+  AssocBaseEIP:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      NetworkInterfaceId: !Ref ASAvOneOutsideENI
+      AllocationId: !GetAtt BaseEIP.AllocationId
+    DependsOn:
+      - ASAvOne
+      - ASAvTwo
+
+  # Main Security Groups for ASAv Instances Outside and Mgmt interfaces
+  # -------------------------------------------------------------------
+
+  BastionSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Bastion SG
+      GroupDescription: Default security group for bastion hosts
+      VpcId: !Ref NetworkVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !GetAtt NetworkVPC.CidrBlock
+
+
+  # Instance profile for bastion host
+  # ---------------------------------
+
+  NetworkBastionProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BastionRole
+
+  # Lunching Network Bastion using Ubuntu 22.04 + fail2ban
+  # ---------------------------------------------
+
+  NetworkBastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.small
+      AvailabilityZone: eu-west-2a
+      IamInstanceProfile: !Ref NetworkBastionProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+          DeviceIndex: "0"
+          SubnetId: !Ref SubnetAMgmt
+      Monitoring: true
+      ImageId: ami-0eb260c4d5475b901
+      KeyName: !Ref ASAvSSH
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #/bin/bash
+          export DEBIAN_FRONTEND=noninteractive
+          apt update && apt upgrade -y \
+          apt install -y fail2ban python3-pip build-essential
+      Tags:
+        - Key: Name
+          Value: NetworkBastion
