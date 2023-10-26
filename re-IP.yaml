@@ -139,6 +139,20 @@ Resources:
         - Key: Name
           Value: TG_Connection_Subnet_C
 
+  # Subnet For NetworkBastion
+  # -------------------------
+
+  NetworkBastionSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.3.48/28
+      AvailabilityZone: eu-west-2a
+      MapPublicIpOnLaunch: false
+      VpcId: !Ref NetworkVPC
+      Tags:
+        - Key: Name
+          Value: Network_Bastion_Subnet_A
+
   # Support Route Table
   # ----------------
 
@@ -199,6 +213,12 @@ Resources:
       RouteTableId: !Ref MainRT
       SubnetId: !Ref SubnetCOutside
 
+  MainRouteTableAssocNetBastionSubnet:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref MainRT
+      SubnetId: !Ref NetworkBastionSubnetA
+
 
   # Transit Gateway
   # ---------------
@@ -239,6 +259,10 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
           CidrIp: 0.0.0.0/0
 
   ASAvOutside:
@@ -409,7 +433,7 @@ Resources:
       - ASAvOne
       - ASAvTwo
 
-  # Main Security Groups for ASAv Instances Outside and Mgmt interfaces
+  # Main Security Groups for Bastion Instances
   # -------------------------------------------------------------------
 
   BastionSG:
@@ -422,7 +446,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !GetAtt NetworkVPC.CidrBlock
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
 
 
   # Instance profile for bastion host
@@ -441,13 +469,10 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.small
-      AvailabilityZone: eu-west-2a
       IamInstanceProfile: !Ref NetworkBastionProfile
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeleteOnTermination: true
-          DeviceIndex: "0"
-          SubnetId: !Ref SubnetAMgmt
+      SubnetId: !Ref NetworkBastionSubnetA
+      SecurityGroupIds:
+        - !Ref BastionSG
       Monitoring: true
       ImageId: ami-0eb260c4d5475b901
       KeyName: !Ref ASAvSSH
@@ -461,3 +486,22 @@ Resources:
       Tags:
         - Key: Name
           Value: NetworkBastion
+
+  # Creating EIP for NetworkBastion traffic
+  # ---------------------------------
+
+  NetworkBastionEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: NetworkBastionEIP
+
+  AssocNetworkBastionEIP:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt NetworkBastionEIP.AllocationId
+      InstanceId: !Ref NetworkBastion
+    DependsOn:
+      - NetworkBastion
