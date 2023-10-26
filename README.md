@@ -19,3 +19,16 @@ EIP attached to outside interface on asavOne (public_ip => Outside interface)
 - [x] add more comments
 - [ ] add routes necessary for production ?
 - [ ] solve potential issues from CloudOps & Network Team
+
+You can use NetworkBstion to connect to ASA`s. Bastion is with elastic IP :
+
+```bash
+ssh ubuntu@ip-address from EC2
+```
+
+```bash
+aws ssm start-session --target <instnace id> --region eu-west-2
+```
+
+
+
