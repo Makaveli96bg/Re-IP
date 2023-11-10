@@ -1,3 +1,4 @@
+#TEST
 Parameters:
   ASAvSSH:
     Type: AWS::EC2::KeyPair::KeyName
